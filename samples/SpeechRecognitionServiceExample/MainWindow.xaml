@@ -13,14 +13,6 @@
             <ColumnDefinition Width="*" MinWidth="200"/>
         </Grid.ColumnDefinitions>
         <Label Grid.Row="0" Grid.Column="0" HorizontalAlignment="Left">Project Cognitive Services Speech To Text Sample</Label>
-        <Grid Grid.Row="0" Grid.Column="1" Margin="0,0,10,0" Visibility="Hidden">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <TextBox VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Padding="2" Text="{Binding ElementName=_mainWindow, Path=SubscriptionKey, Mode=TwoWay}" Visibility="Collapsed"/>
-                <Button Margin="5, 0, 0, 0" Padding="5, 0, 5, 0" Height="30" VerticalAlignment="Top" Click="SaveKey_Click">Save Key</Button>
-                <Button Margin="5, 0, 0, 0" Padding="5, 0, 5, 0" Click="DeleteKey_Click">Delete Key</Button>
-                <Button Click="HelpButton_Click" HorizontalAlignment="Center" Margin="5, 0, 0, 0" Padding="5, 0, 5, 0" Content="Get Key" Height="30" VerticalAlignment="Top" />
-            </StackPanel>
-        </Grid>
 
         <Grid Grid.Row="1" Grid.Column="0">
             <Grid.RowDefinitions>
@@ -32,13 +24,7 @@
                 <StackPanel Orientation="Vertical">
                     <Label>Speech Recognition Source:</Label>
                     <RadioButton x:Name="_micRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsMicrophone}" Margin="10, 10, 0, 0" Click="RadioButton_Click" Visibility="Visible">Use Microphone</RadioButton>
-                    <RadioButton x:Name="_micDictationRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsMicrophoneClientDictation}" Margin="10, 10, 0, 0" Click="RadioButton_Click" Visibility="Collapsed">Use Microphone with LongDictation mode</RadioButton>
-                    <RadioButton x:Name="_micIntentRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsMicrophoneClientWithIntent}" Margin="10, 10, 0, 0" Click="RadioButton_Click" Visibility="Collapsed">Use Microphone and intent detection</RadioButton>
-                    <Label Margin="30,0,0,0" Visibility="Collapsed">(* LUIS registration is needed.)</Label>
                     <RadioButton x:Name="_dataShortRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsSampleWavFile}" Margin="10, 10, 0, 0" Click="RadioButton_Click">Use Sample Wav File</RadioButton>
-                    <RadioButton x:Name="_dataLongRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsDataClientDictation}" Margin="10, 10, 0, 0" Click="RadioButton_Click" Visibility="Collapsed">Use wav file for LongDictation mode</RadioButton>
-                    <RadioButton x:Name="_dataShortIntentRadioButton" IsChecked="{Binding ElementName=_mainWindow, Path=IsDataClientWithIntent}" Margin="10, 10, 0, 0" Click="RadioButton_Click" Visibility="Collapsed">Use wav file and intent detection</RadioButton>
-                    <Label Margin="30,0,0,0" Visibility="Collapsed">(* LUIS registration is needed.)</Label>
                     <Label Margin="10,0,0,0">Speech Engine:</Label>
                     <ComboBox Margin="30,0,30,10" SelectedValuePath="Tag" Name="_lstService" SelectedValue="{Binding ElementName=_mainWindow, Path=SpeechToTextService, Mode=TwoWay}">
                         <ListBoxItem Tag="1" Content="Microsoft Speech to Text" IsSelected="True"/>

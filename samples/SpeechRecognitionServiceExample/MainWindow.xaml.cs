@@ -77,12 +77,6 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </summary>
         private DataRecognitionClient dataClient;
 
-        /// <summary>
-        /// The microphone client
-        /// </summary>
-        private MicrophoneRecognitionClient micClient;
-
-
         private Recorder recorder;
 
         private string recordFilePath;
@@ -304,12 +298,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             {
                 this.dataClient.Dispose();
             }
-
-            if (null != this.micClient)
-            {
-                this.micClient.Dispose();
-            }
-
+            
             base.OnClosed(e);
         }
 
@@ -475,65 +464,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
 
             this.WriteLine("\n--- Start speech recognition using " + recoSource + " with " + this.Mode + " mode in " + this.DefaultLocale + " language ----\n\n");
         }
-
-        /// <summary>
-        /// Creates a new microphone reco client without LUIS intent support.
-        /// </summary>
-        private void CreateMicrophoneRecoClient()
-        {
-            this.micClient = SpeechRecognitionServiceFactory.CreateMicrophoneClient(
-                this.Mode,
-                this.DefaultLocale,
-                this.SubscriptionKey);
-            this.micClient.AuthenticationUri = this.AuthenticationUri;
-
-            // Event handlers for speech recognition results
-            this.micClient.OnMicrophoneStatus += this.OnMicrophoneStatus;
-            this.micClient.OnPartialResponseReceived += this.OnPartialResponseReceivedHandler;
-            if (this.Mode == SpeechRecognitionMode.ShortPhrase)
-            {
-                this.micClient.OnResponseReceived += this.OnMicShortPhraseResponseReceivedHandler;
-            }
-            else if (this.Mode == SpeechRecognitionMode.LongDictation)
-            {
-                this.micClient.OnResponseReceived += this.OnMicDictationResponseReceivedHandler;
-            }
-
-            this.micClient.OnConversationError += this.OnConversationErrorHandler;
-        }
-
-        /// <summary>
-        /// Creates a new microphone reco client with LUIS intent support.
-        /// </summary>
-        private void CreateMicrophoneRecoClientWithIntent()
-        {
-            this.WriteLine("--- Start microphone dictation with Intent detection ----");
-
-            this.micClient =
-                SpeechRecognitionServiceFactory.CreateMicrophoneClientWithIntentUsingEndpointUrl(
-                    this.DefaultLocale,
-                    this.SubscriptionKey,
-                    this.LuisEndpointUrl);
-            this.micClient.AuthenticationUri = this.AuthenticationUri;
-            this.micClient.OnIntent += this.OnIntentHandler;
-
-            // Event handlers for speech recognition results
-            this.micClient.OnMicrophoneStatus += this.OnMicrophoneStatus;
-            this.micClient.OnPartialResponseReceived += this.OnPartialResponseReceivedHandler;
-            this.micClient.OnResponseReceived += this.OnMicShortPhraseResponseReceivedHandler;
-            this.micClient.OnConversationError += this.OnConversationErrorHandler;
-        }
-
-        /// <summary>
-        /// Handles the Click event of the HelpButton control.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
-        private void HelpButton_Click(object sender, RoutedEventArgs e)
-        {
-            Process.Start("https://www.projectoxford.ai/doc/general/subscription-key-mgmt");
-        }
-
+        
         /// <summary>
         /// Creates a data client without LUIS intent support.
         /// Speech recognition with data (for example from a file or audio source).  
@@ -692,29 +623,6 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </summary>
         /// <param name="sender">The sender.</param>
         /// <param name="e">The <see cref="SpeechResponseEventArgs"/> instance containing the event data.</param>
-        private void OnMicShortPhraseResponseReceivedHandler(object sender, SpeechResponseEventArgs e)
-        {
-            Dispatcher.Invoke((Action)(() =>
-            {
-                this.WriteLine("--- OnMicShortPhraseResponseReceivedHandler ---");
-
-                // we got the final result, so it we can end the mic reco.  No need to do this
-                // for dataReco, since we already called endAudio() on it as soon as we were done
-                // sending all the data.
-                this.micClient.EndMicAndRecognition();
-
-                this.WriteResponseResult(e);
-
-                _startButton.IsEnabled = true;
-                _radioGroup.IsEnabled = true;
-            }));
-        }
-
-        /// <summary>
-        /// Called when a final response is received;
-        /// </summary>
-        /// <param name="sender">The sender.</param>
-        /// <param name="e">The <see cref="SpeechResponseEventArgs"/> instance containing the event data.</param>
         private void OnDataShortPhraseResponseReceivedHandler(object sender, SpeechResponseEventArgs e)
         {
             Dispatcher.Invoke((Action)(() =>
@@ -755,33 +663,6 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
 
                 this.WriteLine();
             }
-        }
-
-        /// <summary>
-        /// Called when a final response is received;
-        /// </summary>
-        /// <param name="sender">The sender.</param>
-        /// <param name="e">The <see cref="SpeechResponseEventArgs"/> instance containing the event data.</param>
-        private void OnMicDictationResponseReceivedHandler(object sender, SpeechResponseEventArgs e)
-        {
-            this.WriteLine("--- OnMicDictationResponseReceivedHandler ---");
-            if (e.PhraseResponse.RecognitionStatus == RecognitionStatus.EndOfDictation ||
-                e.PhraseResponse.RecognitionStatus == RecognitionStatus.DictationEndSilenceTimeout)
-            {
-                Dispatcher.Invoke(
-                    (Action)(() =>
-                    {
-                        // we got the final result, so it we can end the mic reco.  No need to do this
-                        // for dataReco, since we already called endAudio() on it as soon as we were done
-                        // sending all the data.
-                        this.micClient.EndMicAndRecognition();
-
-                        this._startButton.IsEnabled = true;
-                        this._radioGroup.IsEnabled = true;
-                    }));
-            }
-
-            this.WriteResponseResult(e);
         }
 
         /// <summary>
@@ -854,26 +735,6 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         }
 
         /// <summary>
-        /// Called when the microphone status has changed.
-        /// </summary>
-        /// <param name="sender">The sender.</param>
-        /// <param name="e">The <see cref="MicrophoneEventArgs"/> instance containing the event data.</param>
-        private void OnMicrophoneStatus(object sender, MicrophoneEventArgs e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                WriteLine("--- Microphone status change received by OnMicrophoneStatus() ---");
-                WriteLine("********* Microphone status: {0} *********", e.Recording);
-                if (e.Recording)
-                {
-                    WriteLine("Please start speaking.");
-                }
-
-                WriteLine();
-            });
-        }
-
-        /// <summary>
         /// Writes the line.
         /// </summary>
         private void WriteLine()
@@ -931,52 +792,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
 
             return subscriptionKey;
         }
-
-        /// <summary>
-        /// Handles the Click event of the subscription key save button.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
-        private void SaveKey_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                SaveSubscriptionKeyToIsolatedStorage(this.SubscriptionKey);
-                MessageBox.Show("Subscription key is saved in your disk.\nYou do not need to paste the key next time.", "Subscription Key");
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(
-                    "Fail to save subscription key. Error message: " + exception.Message,
-                    "Subscription Key",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-        }
-
-        /// <summary>
-        /// Handles the Click event of the DeleteKey control.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
-        private void DeleteKey_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                this.SubscriptionKey = DefaultSubscriptionKeyPromptMessage;
-                SaveSubscriptionKeyToIsolatedStorage(string.Empty);
-                MessageBox.Show("Subscription key is deleted from your disk.", "Subscription Key");
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(
-                    "Fail to delete subscription key. Error message: " + exception.Message,
-                    "Subscription Key",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-        }
-
+        
         /// <summary>
         /// Helper function for INotifyPropertyChanged interface 
         /// </summary>
