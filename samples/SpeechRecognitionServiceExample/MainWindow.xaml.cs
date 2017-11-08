@@ -33,13 +33,20 @@
 
 namespace Microsoft.CognitiveServices.SpeechRecognition
 {
+    using Newtonsoft.Json;
+    using SpeechToTextWPFSample.Model;
     using System;
     using System.ComponentModel;
     using System.Configuration;
     using System.Diagnostics;
     using System.IO;
     using System.IO.IsolatedStorage;
+    using System.Net.Http;
     using System.Runtime.CompilerServices;
+    using System.Text;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using System.Web.UI.WebControls;
     using System.Windows;
 
     /// <summary>
@@ -47,6 +54,8 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        string NuanceBaseURI = "http://nuance.brazilsouth.cloudapp.azure.com:8080";
+
         /// <summary>
         /// The isolated storage subscription key file name.
         /// </summary>
@@ -80,6 +89,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         {
             this.InitializeComponent();
             this.Initialize();
+
         }
 
         #region Events
@@ -90,6 +100,11 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         public event PropertyChangedEventHandler PropertyChanged;
 
         #endregion Events
+
+        /// <summary>
+        /// Get or Set which service provider we will use 
+        /// </summary>
+        public int SpeechToTextService { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this instance is microphone client short phrase.
@@ -226,7 +241,10 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </value>
         private string DefaultLocale
         {
-            get { return "en-US"; }
+            get
+            {
+                return "pt-br"; //"en-US"; 
+            }
         }
 
         /// <summary>
@@ -323,7 +341,11 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             // Set the default choice for the group of checkbox.
             this._micRadioButton.IsChecked = true;
 
+
             this.SubscriptionKey = this.GetSubscriptionKeyFromIsolatedStorage();
+            if (this.SubscriptionKey.Equals(DefaultSubscriptionKeyPromptMessage))
+                this.SubscriptionKey = "886c41102e6343c5bf3b824d5901c787";
+
         }
 
         /// <summary>
@@ -331,7 +353,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </summary>
         /// <param name="sender">The source of the event.</param>
         /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
-        private void StartButton_Click(object sender, RoutedEventArgs e)
+        private async void StartButton_Click(object sender, RoutedEventArgs e)
         {
             this._startButton.IsEnabled = false;
             this._radioGroup.IsEnabled = false;
@@ -356,20 +378,84 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             }
             else
             {
-                if (null == this.dataClient)
+                var wavFileName = (this.Mode == SpeechRecognitionMode.ShortPhrase) ? this.ShortWaveFile : this.LongWaveFile;
+
+                if (SpeechToTextService == 1)
                 {
-                    if (this.WantIntent)
+                    if (null == this.dataClient)
                     {
-                        this.CreateDataRecoClientWithIntent();
+                        if (this.WantIntent)
+                        {
+                            this.CreateDataRecoClientWithIntent();
+                        }
+                        else
+                        {
+                            this.CreateDataRecoClient();
+                        }
+                    }
+
+                    this.SendAudioHelper(wavFileName);
+                }
+                else
+                {
+                    this.WriteLine("---------- Nuance ----------");
+                    var jobReference = await NuanceSendAudioAsync(wavFileName);
+                    if (!string.IsNullOrEmpty(jobReference))
+                    {
+                        this.WriteLine("---------- Job Reference ---------");
+                        this.WriteLine(jobReference);
+                        this.WriteLine("---------- Transcript ------------");
+                        var transcript = await NuanceGetTranscript(jobReference);
+                        this.WriteLine();
+                        this.WriteLine(transcript);
                     }
                     else
                     {
-                        this.CreateDataRecoClient();
+                        this.WriteLine("---------- Job Reference is null ---------");
                     }
+                    this._startButton.IsEnabled = true;
+                    this._radioGroup.IsEnabled = true;
                 }
-
-                this.SendAudioHelper((this.Mode == SpeechRecognitionMode.ShortPhrase) ? this.ShortWaveFile : this.LongWaveFile);
             }
+        }
+
+        private async Task<string> NuanceGetTranscript(string jobReference)
+        {
+            string transcript = string.Empty;
+            NuanceStatus nuanceStatus = null;
+            using (var client = new HttpClient())
+            {
+                bool status = false;
+                do
+                {
+                    var response = client.GetAsync($"{this.NuanceBaseURI}/status/{jobReference}").GetAwaiter().GetResult();
+
+                    var strContent = await response.Content.ReadAsStringAsync();
+                    nuanceStatus = JsonConvert.DeserializeObject<NuanceStatus>(strContent);
+
+                    this.WriteLine($"Status: {nuanceStatus.Status}");
+
+                    if (nuanceStatus.Status.Equals("TRANSCRIBED"))
+                        status = true;
+                    if (nuanceStatus.Status.Equals("ABORTING") ||
+                        nuanceStatus.Status.Equals("ABORTED") ||
+                        nuanceStatus.Status.Equals("FAILED"))
+                    {
+                        throw new Exception("Error processing the job!");
+                    }
+                    if (!status)
+                    {
+                        this.WriteLine("Waiting before checking again...");
+                        await Task.Delay(3 * 1000);
+                    }
+                } while (!status);
+
+            }
+
+            if (nuanceStatus != null)
+                transcript = nuanceStatus.Channels.FirstChannelLabel.Transcript[0].Text;
+
+            return transcript;
         }
 
         /// <summary>
@@ -477,7 +563,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
                 this.dataClient.OnResponseReceived += this.OnDataDictationResponseReceivedHandler;
             }
 
-            this.dataClient.OnPartialResponseReceived += this.OnPartialResponseReceivedHandler;
+            //this.dataClient.OnPartialResponseReceived += this.OnPartialResponseReceivedHandler;
             this.dataClient.OnConversationError += this.OnConversationErrorHandler;
         }
 
@@ -511,6 +597,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// <param name="wavFileName">Name of the wav file.</param>
         private void SendAudioHelper(string wavFileName)
         {
+
             using (FileStream fileStream = new FileStream(wavFileName, FileMode.Open, FileAccess.Read))
             {
                 // Note for wave files, we can just send data from the file right to the server.
@@ -528,6 +615,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
                         // Get more Audio data to send into byte buffer.
                         bytesRead = fileStream.Read(buffer, 0, buffer.Length);
 
+
                         // Send of audio data to service. 
                         this.dataClient.SendAudio(buffer, bytesRead);
                     }
@@ -539,6 +627,68 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
                     this.dataClient.EndAudio();
                 }
             }
+        }
+
+        /// <summary>
+        /// Send the wav file to nuance server and return the reference job Id for further check
+        /// </summary>
+        /// <param name="wavFileName"></param>
+        /// <returns>String with the job id</returns>
+        private async Task<String> NuanceSendAudioAsync(string wavFileName)
+        {
+            string baseURI = "http://nuance.brazilsouth.cloudapp.azure.com:8080";
+
+            string referenceStr = string.Empty;
+            Reference reference = null;
+
+            using (var client = new HttpClient())
+            {
+                var nuance = new Nuance();
+                nuance.OperatingMode = "accurate";
+                nuance.CallbackUrl = string.Empty;
+                nuance.StartTime = string.Empty;
+                nuance.EndTime = string.Empty;
+                nuance.Reference = Guid.NewGuid().ToString();
+
+                nuance.Model = new Model()
+                {
+                    Name = "por-bra"
+                };
+
+                nuance.Channels = new Channels();
+                nuance.Channels.FirstChannelLabel = new ChannelLabel()
+                {
+                    Format = "wave",
+                    ResultFormat = "transcript",
+                    ResultVersion = 2
+                };
+
+
+                using (var content = new MultipartFormDataContent())
+                {
+                    //Content-Disposition: form-data; name="json"
+                    var stringContent = new StringContent(JsonConvert.SerializeObject(nuance), Encoding.UTF8, "application/json");
+                    content.Add(stringContent, "json");
+
+                    FileStream fs = File.OpenRead(wavFileName);
+
+                    var streamContent = new StreamContent(fs);
+                    streamContent.Headers.Add("Content-Type", "audio/x-wav");
+                    content.Add(streamContent, "firstChannelLabel", Path.GetFileName(wavFileName));
+
+                    var str = content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+                    var response = client.PostAsync(baseURI, content).GetAwaiter().GetResult();
+                    referenceStr = await response.Content.ReadAsStringAsync();
+
+                    reference = JsonConvert.DeserializeObject<Reference>(referenceStr);
+                }
+            }
+
+            if (reference != null)
+                return reference.PurpleReference;
+
+            return string.Empty;
         }
 
         /// <summary>
@@ -601,8 +751,8 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
                 for (int i = 0; i < e.PhraseResponse.Results.Length; i++)
                 {
                     this.WriteLine(
-                        "[{0}] Confidence={1}, Text=\"{2}\"", 
-                        i, 
+                        "[{0}] Confidence={1}, Text=\"{2}\"",
+                        i,
                         e.PhraseResponse.Results[i].Confidence,
                         e.PhraseResponse.Results[i].DisplayText);
                 }
@@ -621,9 +771,9 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             this.WriteLine("--- OnMicDictationResponseReceivedHandler ---");
             if (e.PhraseResponse.RecognitionStatus == RecognitionStatus.EndOfDictation ||
                 e.PhraseResponse.RecognitionStatus == RecognitionStatus.DictationEndSilenceTimeout)
-            { 
+            {
                 Dispatcher.Invoke(
-                    (Action)(() => 
+                    (Action)(() =>
                     {
                         // we got the final result, so it we can end the mic reco.  No need to do this
                         // for dataReco, since we already called endAudio() on it as soon as we were done
@@ -632,7 +782,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
 
                         this._startButton.IsEnabled = true;
                         this._radioGroup.IsEnabled = true;
-                    }));                
+                    }));
             }
 
             this.WriteResponseResult(e);
@@ -650,7 +800,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
                 e.PhraseResponse.RecognitionStatus == RecognitionStatus.DictationEndSilenceTimeout)
             {
                 Dispatcher.Invoke(
-                    (Action)(() => 
+                    (Action)(() =>
                     {
                         _startButton.IsEnabled = true;
                         _radioGroup.IsEnabled = true;
@@ -695,11 +845,11 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// <param name="e">The <see cref="SpeechErrorEventArgs"/> instance containing the event data.</param>
         private void OnConversationErrorHandler(object sender, SpeechErrorEventArgs e)
         {
-           Dispatcher.Invoke(() =>
-           {
-               _startButton.IsEnabled = true;
-               _radioGroup.IsEnabled = true;
-           });
+            Dispatcher.Invoke(() =>
+            {
+                _startButton.IsEnabled = true;
+                _radioGroup.IsEnabled = true;
+            });
 
             this.WriteLine("--- Error received by OnConversationErrorHandler() ---");
             this.WriteLine("Error code: {0}", e.SpeechErrorCode.ToString());
@@ -744,6 +894,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         {
             var formattedStr = string.Format(format, args);
             Trace.WriteLine(formattedStr);
+            
             Dispatcher.Invoke(() =>
             {
                 _logText.Text += (formattedStr + "\n");
@@ -801,8 +952,8 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             {
                 MessageBox.Show(
                     "Fail to save subscription key. Error message: " + exception.Message,
-                    "Subscription Key", 
-                    MessageBoxButton.OK, 
+                    "Subscription Key",
+                    MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
         }
@@ -824,8 +975,8 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             {
                 MessageBox.Show(
                     "Fail to delete subscription key. Error message: " + exception.Message,
-                    "Subscription Key", 
-                    MessageBoxButton.OK, 
+                    "Subscription Key",
+                    MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
         }
