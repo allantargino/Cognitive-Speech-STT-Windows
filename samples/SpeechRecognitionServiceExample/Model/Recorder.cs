@@ -1,6 +1,7 @@
 ﻿using NAudio.Wave;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,57 +10,83 @@ namespace SpeechToTextWPFSample.Model
 {
     public class Recorder
     {
-        public WaveIn waveSource = null;
-        public WaveFileWriter waveFile = null;
+        private WaveIn _waveSource = null;
+        private WaveFileWriter _waveFile = null;
 
-        private bool recording = false;
+        private Action<string> _fileCallback = null;
+        private string _filePath = string.Empty;
 
-        public Recorder()
+        public bool IsRecording { get; private set; }
+
+        public Recorder(Action<string> fileCallback, string filePath = "recording.wav")
         {
-            waveSource = new WaveIn();
-            waveSource.WaveFormat = new WaveFormat(44100, 1);
+            _fileCallback = fileCallback;
+            _filePath = filePath;
+        }
+
+        private WaveIn InitWaveSource()
+        {
+            var waveSource = new WaveIn
+            {
+                WaveFormat = new WaveFormat(44100, 1)
+            };
 
             waveSource.DataAvailable += new EventHandler<WaveInEventArgs>(WaveSource_DataAvailable);
             waveSource.RecordingStopped += new EventHandler<StoppedEventArgs>(WaveSource_RecordingStopped);
+
+            return waveSource;
         }
-        
+
+        private void DisposeObjects()
+        {
+            if (_waveSource != null)
+            {
+                _waveSource.Dispose();
+                _waveSource = null;
+            }
+
+            if (_waveFile != null)
+            {
+                _waveFile.Dispose();
+                _waveFile = null;
+            }
+        }
+
         public void StartRecording()
         {
-            waveFile = new WaveFileWriter(@"C:\Temp\Test0001.wav", waveSource.WaveFormat);
-            waveSource.StartRecording();
-            recording = true;
+            if(File.Exists(_filePath))
+                File.Delete(_filePath);
+
+            _waveSource = InitWaveSource();
+
+            _waveFile = new WaveFileWriter(_filePath, _waveSource.WaveFormat);
+            _waveSource.StartRecording();
+            IsRecording = true;
         }
 
         public void StopRecording()
         {
-            waveSource.StopRecording();
-            recording = false;
+            _waveSource.StopRecording();
+            IsRecording = false;
         }
         
         void WaveSource_DataAvailable(object sender, WaveInEventArgs e)
         {
-            if (waveFile != null)
+            if (_waveFile != null)
             {
-                waveFile.Write(e.Buffer, 0, e.BytesRecorded);
-                waveFile.Flush();
+                _waveFile.Write(e.Buffer, 0, e.BytesRecorded);
+                _waveFile.Flush();
             }
         }
 
         void WaveSource_RecordingStopped(object sender, StoppedEventArgs e)
         {
-            if (waveSource != null)
-            {
-                waveSource.Dispose();
-                waveSource = null;
-            }
+            DisposeObjects();
 
-            if (waveFile != null)
-            {
-                waveFile.Dispose();
-                waveFile = null;
-            }
+            IsRecording = false;
 
-            recording = false;
+            _fileCallback(_filePath);
         }
+
     }
 }

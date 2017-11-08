@@ -85,6 +85,9 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
 
         private Recorder recorder;
 
+        private string recordFilePath;
+
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MainWindow"/> class.
         /// </summary>
@@ -92,7 +95,6 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         {
             this.InitializeComponent();
             this.Initialize();
-
         }
 
         #region Events
@@ -115,7 +117,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// <value>
         /// <c>true</c> if this instance is microphone client short phrase; otherwise, <c>false</c>.
         /// </value>
-        public bool IsMicrophoneClientShortPhrase { get; set; }
+        public bool IsMicrophone { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this instance is microphone client dictation.
@@ -139,7 +141,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// <value>
         /// <c>true</c> if this instance is data client short phrase; otherwise, <c>false</c>.
         /// </value>
-        public bool IsDataClientShortPhrase { get; set; }
+        public bool IsSampleWavFile { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this instance is data client with intent.
@@ -197,7 +199,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             {
                 return this.IsMicrophoneClientWithIntent ||
                     this.IsMicrophoneClientDictation ||
-                    this.IsMicrophoneClientShortPhrase;
+                    this.IsMicrophone;
             }
         }
 
@@ -334,10 +336,10 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </summary>
         private void Initialize()
         {
-            this.IsMicrophoneClientShortPhrase = true;
+            this.IsMicrophone = true;
             this.IsMicrophoneClientWithIntent = false;
             this.IsMicrophoneClientDictation = false;
-            this.IsDataClientShortPhrase = false;
+            this.IsSampleWavFile = false;
             this.IsDataClientWithIntent = false;
             this.IsDataClientDictation = false;
 
@@ -349,7 +351,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             if (this.SubscriptionKey.Equals(DefaultSubscriptionKeyPromptMessage))
                 this.SubscriptionKey = "886c41102e6343c5bf3b824d5901c787";
 
-            this.recorder = new Recorder();
+            this.recorder = new Recorder(VoiceRecordCallback);
         }
 
         /// <summary>
@@ -360,66 +362,56 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         private async void StartButton_Click(object sender, RoutedEventArgs e)
         {
             this._startButton.IsEnabled = false;
+            this._recordButton.IsEnabled = false;
             this._radioGroup.IsEnabled = false;
 
             this.LogRecognitionStart();
 
+            string wavFileName = string.Empty;
             if (this.UseMicrophone)
             {
-                if (this.micClient == null)
-                {
-                    if (this.WantIntent)
-                    {
-                        this.CreateMicrophoneRecoClientWithIntent();
-                    }
-                    else
-                    {
-                        this.CreateMicrophoneRecoClient();
-                    }
-                }
-
-                this.micClient.StartMicAndRecognition();
+                wavFileName = recordFilePath;
             }
             else
             {
-                var wavFileName = (this.Mode == SpeechRecognitionMode.ShortPhrase) ? this.ShortWaveFile : this.LongWaveFile;
+                wavFileName = (this.Mode == SpeechRecognitionMode.ShortPhrase) ? this.ShortWaveFile : this.LongWaveFile;
+            }
 
-                if (SpeechToTextService == 1)
+            if (SpeechToTextService == 1)
+            {
+                if (null == this.dataClient)
                 {
-                    if (null == this.dataClient)
+                    if (this.WantIntent)
                     {
-                        if (this.WantIntent)
-                        {
-                            this.CreateDataRecoClientWithIntent();
-                        }
-                        else
-                        {
-                            this.CreateDataRecoClient();
-                        }
-                    }
-
-                    this.SendAudioHelper(wavFileName);
-                }
-                else
-                {
-                    this.WriteLine("---------- Nuance ----------");
-                    var jobReference = await NuanceSendAudioAsync(wavFileName);
-                    if (!string.IsNullOrEmpty(jobReference))
-                    {
-                        this.WriteLine("---------- Job Reference ---------");
-                        this.WriteLine(jobReference);
-                        this.WriteLine("---------- Transcript ------------");
-                        var transcript = await NuanceGetTranscript(jobReference);
-                        this.WriteLine();
-                        this.WriteLine(transcript);
+                        this.CreateDataRecoClientWithIntent();
                     }
                     else
                     {
-                        this.WriteLine("---------- Job Reference is null ---------");
+                        this.CreateDataRecoClient();
                     }
-                    this._startButton.IsEnabled = true;
-                    this._radioGroup.IsEnabled = true;
                 }
+
+                this.SendAudioHelper(wavFileName);
+            }
+            else
+            {
+                this.WriteLine("---------- Nuance ----------");
+                var jobReference = await NuanceSendAudioAsync(wavFileName);
+                if (!string.IsNullOrEmpty(jobReference))
+                {
+                    this.WriteLine("---------- Job Reference ---------");
+                    this.WriteLine(jobReference);
+                    this.WriteLine("---------- Transcript ------------");
+                    var transcript = await NuanceGetTranscript(jobReference);
+                    this.WriteLine();
+                    this.WriteLine(transcript);
+                }
+                else
+                {
+                    this.WriteLine("---------- Job Reference is null ---------");
+                }
+                this._startButton.IsEnabled = true;
+                this._radioGroup.IsEnabled = true;
             }
         }
 
@@ -1006,33 +998,47 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
         private void RadioButton_Click(object sender, RoutedEventArgs e)
         {
-            // Reset everything
-            if (this.micClient != null)
-            {
-                this.micClient.EndMicAndRecognition();
-                this.micClient.Dispose();
-                this.micClient = null;
-            }
-
             if (this.dataClient != null)
             {
                 this.dataClient.Dispose();
                 this.dataClient = null;
             }
 
+            if (IsMicrophone)
+            {
+                this._startButton.IsEnabled = false;
+                this._recordButton.IsEnabled = true;
+            }
+            else
+            {
+                this._startButton.IsEnabled = true;
+                this._recordButton.IsEnabled = false;
+            }
+
             this._logText.Text = string.Empty;
-            this._startButton.IsEnabled = true;
             this._radioGroup.IsEnabled = true;
         }
 
-        private void StartRecording_Click(object sender, RoutedEventArgs e)
+        private void RecordButton_Click(object sender, RoutedEventArgs e)
         {
-            recorder.StartRecording();
+            if (recorder.IsRecording)
+            {
+                _startButton.IsEnabled = true;
+                _recordButton.Content = "Start Recording Voice";
+                recorder.StopRecording();
+            }
+            else
+            {
+                _startButton.IsEnabled = false;
+                _recordButton.Content = "Stop Recording Voice";
+                recorder.StartRecording();
+            }
         }
 
-        private void FinishRecording_Click(object sender, RoutedEventArgs e)
+        private void VoiceRecordCallback(string filePath)
         {
-            recorder.StopRecording();
+            _startButton.IsEnabled = true;
+            recordFilePath = filePath;
         }
     }
 }
