@@ -82,6 +82,9 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
         /// </summary>
         private MicrophoneRecognitionClient micClient;
 
+
+        private Recorder recorder;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MainWindow"/> class.
         /// </summary>
@@ -346,6 +349,7 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             if (this.SubscriptionKey.Equals(DefaultSubscriptionKeyPromptMessage))
                 this.SubscriptionKey = "886c41102e6343c5bf3b824d5901c787";
 
+            this.recorder = new Recorder();
         }
 
         /// <summary>
@@ -1019,6 +1023,16 @@ namespace Microsoft.CognitiveServices.SpeechRecognition
             this._logText.Text = string.Empty;
             this._startButton.IsEnabled = true;
             this._radioGroup.IsEnabled = true;
+        }
+
+        private void StartRecording_Click(object sender, RoutedEventArgs e)
+        {
+            recorder.StartRecording();
+        }
+
+        private void FinishRecording_Click(object sender, RoutedEventArgs e)
+        {
+            recorder.StopRecording();
         }
     }
 }
